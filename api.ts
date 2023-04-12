@@ -1,32 +1,45 @@
-const db = require('./db');
-const {
+import {
   GetItemCommand,
   PutItemCommand,
   DeleteItemCommand,
   ScanCommand,
   UpdateItemCommand,
-} = require('@aws-sdk/client-dynamodb');
-const { marshall, unmarshall } = require('serverless-iam-roles-per-function');
+  UpdateItemCommandInput,
+  DeleteItemCommandInput,
+} from '@aws-sdk/client-dynamodb';
+import { marshall, unmarshall } from '@aws-sdk/util-dynamodb';
+import { client } from './db';
+import {
+  APIGatewayProxyEvent,
+  APIGatewayProxyHandler,
+  APIGatewayProxyResult,
+} from 'aws-lambda';
 
-const getPost = async (event) => {
-  const response = { statusCode: 200 };
+const response: APIGatewayProxyResult = {
+  statusCode: 200,
+  body: JSON.stringify({
+    message: 'Success',
+  }),
+};
 
+export const getPost: APIGatewayProxyHandler = async (
+  event: APIGatewayProxyEvent
+) => {
   try {
     const params = {
       TableName: process.env.DYNAMODB_TABLE_NAME,
       Key: marshall({
-        postId: event.pathParameters.postId,
+        postId: event.pathParameters?.postId,
       }),
     };
-    const { Item } = await db.send(new GetItemCommand(params));
+    const { Item } = await client.send(new GetItemCommand(params));
     response.body = JSON.stringify({
       message: 'Successfully retrieved post',
       data: Item ? unmarshall(Item) : {},
       rawData: Item,
     });
     console.log({ Item });
-  } catch (error) {
-    console.log(error);
+  } catch (error: any) {
     response.statusCode = 500;
     response.body = JSON.stringify({
       message: 'Failed to get post',
@@ -38,22 +51,26 @@ const getPost = async (event) => {
   return response;
 };
 
-const createPost = async (event) => {
-  const response = { statusCode: 201 };
-
+export const createPost: APIGatewayProxyHandler = async (
+  event: APIGatewayProxyEvent
+) => {
   try {
+    if (event.body === null) {
+      throw new Error('Request body cannot be null');
+    }
+
     const body = JSON.parse(event.body);
     const params = {
       TableName: process.env.DYNAMODB_TABLE_NAME,
       Item: marshall(body || {}),
     };
-    const createResult = await db.send(new PutItemCommand(params));
+    const createResult = await client.send(new PutItemCommand(params));
 
     response.body = JSON.stringify({
       message: 'Successfully created post',
       createResult,
     });
-  } catch (error) {
+  } catch (error: any) {
     console.log(error);
     response.statusCode = 500;
     response.body = JSON.stringify({
@@ -66,14 +83,21 @@ const createPost = async (event) => {
   return response;
 };
 
-const updatePost = async (event) => {
-  const response = { statusCode: 200 };
-
+export const updatePost: APIGatewayProxyHandler = async (
+  event: APIGatewayProxyEvent
+) => {
   try {
+    if (event.body === null) {
+      throw new Error('Request body cannot be null');
+    }
+    if (event.pathParameters === null) {
+      throw new Error('Path parameters cannot be null');
+    }
+
     const body = JSON.parse(event.body);
     const objKeys = Object.keys(body);
 
-    const params = {
+    const params: UpdateItemCommandInput = {
       TableName: process.env.DYNAMODB_TABLE_NAME,
       Key: marshall({ postId: event.pathParameters.postId }),
       UpdateExpression: `SET ${objKeys.map(
@@ -96,13 +120,13 @@ const updatePost = async (event) => {
         )
       ),
     };
-    const updateResult = await db.send(new UpdateItemCommand(params));
+    const updateResult = await client.send(new UpdateItemCommand(params));
 
     response.body = JSON.stringify({
       message: 'Successfully updated post',
       updateResult,
     });
-  } catch (error) {
+  } catch (error: any) {
     console.log(error);
     response.statusCode = 500;
     response.body = JSON.stringify({
@@ -115,22 +139,25 @@ const updatePost = async (event) => {
   return response;
 };
 
-const deletePost = async (event) => {
-  const response = { statusCode: 200 };
-
+export const deletePost: APIGatewayProxyHandler = async (
+  event: APIGatewayProxyEvent
+) => {
   try {
-    const params = {
+    if (event.pathParameters === null) {
+      throw new Error('Path parameters cannot be null');
+    }
+    const params: DeleteItemCommandInput = {
       TableName: process.env.DYNAMODB_TABLE_NAME,
       Key: marshall({ postId: event.pathParameters.postId }),
     };
 
-    const deleteResult = await db.send(new DeleteItemCommand(params));
+    const deleteResult = await client.send(new DeleteItemCommand(params));
 
     response.body = JSON.stringify({
       message: 'Successfully deleted post',
       deleteResult,
     });
-  } catch (error) {
+  } catch (error: any) {
     console.log(error);
     response.statusCode = 500;
     response.body = JSON.stringify({
@@ -143,20 +170,20 @@ const deletePost = async (event) => {
   return response;
 };
 
-const getAllPosts = async (event) => {
-  const response = { statusCode: 200 };
-
+export const getAllPosts: APIGatewayProxyHandler = async (
+  event: APIGatewayProxyEvent
+) => {
   try {
-    const { Items } = await db.send(
+    const { Items } = await client.send(
       new ScanCommand({ TableName: process.env.DYNAMODB_TABLE_NAME })
     );
 
     response.body = JSON.stringify({
       message: 'Successfully retrieved posts',
-      data: Items.map((item) => unmarshall(item)),
+      data: Items ? Items.map((item) => unmarshall(item)) : {},
       Items,
     });
-  } catch (error) {
+  } catch (error: any) {
     console.log(error);
     response.statusCode = 500;
     response.body = JSON.stringify({
@@ -167,12 +194,4 @@ const getAllPosts = async (event) => {
   }
 
   return response;
-};
-
-module.exports = {
-  getPost,
-  createPost,
-  updatePost,
-  deletePost,
-  getAllPosts,
 };
